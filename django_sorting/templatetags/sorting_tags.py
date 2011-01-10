@@ -1,23 +1,24 @@
 from django import template
 from django.http import Http404
 from django.conf import settings
+from django.core.exceptions import FieldError
 
 register = template.Library()
 
 DEFAULT_SORT_UP = getattr(settings, 'DEFAULT_SORT_UP' , '&uarr;')
 DEFAULT_SORT_DOWN = getattr(settings, 'DEFAULT_SORT_DOWN' , '&darr;')
-INVALID_FIELD_RAISES_404 = getattr(settings, 
+INVALID_FIELD_RAISES_404 = getattr(settings,
         'SORTING_INVALID_FIELD_RAISES_404' , False)
 
 sort_directions = {
-    'asc': {'icon':DEFAULT_SORT_UP, 'inverse': 'desc'}, 
-    'desc': {'icon':DEFAULT_SORT_DOWN, 'inverse': 'asc'}, 
-    '': {'icon':DEFAULT_SORT_DOWN, 'inverse': 'asc'}, 
+    'asc': {'icon':DEFAULT_SORT_UP, 'inverse': 'desc'},
+    'desc': {'icon':DEFAULT_SORT_DOWN, 'inverse': 'asc'},
+    '': {'icon':DEFAULT_SORT_DOWN, 'inverse': 'asc'},
 }
 
 def anchor(parser, token):
     """
-    Parses a tag that's supposed to be in this format: {% anchor field title %}    
+    Parses a tag that's supposed to be in this format: {% anchor field title %}
     """
     bits = [b.strip('"\'') for b in token.split_contents()]
     if len(bits) < 2:
@@ -27,13 +28,13 @@ def anchor(parser, token):
     except IndexError:
         title = bits[1].capitalize()
     return SortAnchorNode(bits[1].strip(), title.strip())
-    
+
 
 class SortAnchorNode(template.Node):
     """
-    Renders an <a> HTML tag with a link which href attribute 
+    Renders an <a> HTML tag with a link which href attribute
     includes the field on which we sort and the direction.
-    and adds an up or down arrow if the field is the one 
+    and adds an up or down arrow if the field is the one
     currently being sorted on.
 
     Eg.
@@ -110,8 +111,13 @@ class SortedDataNode(template.Node):
         order_by = context['request'].field
         if len(order_by) > 1:
             try:
-                context[key] = value.order_by(order_by)
-            except template.TemplateSyntaxError:
+                result = value.order_by(order_by)
+                # prevent lazy evaluation
+                if result:
+                    context[key] = result
+                else:
+                    context[key] = value
+            except FieldError:
                 if INVALID_FIELD_RAISES_404:
                     raise Http404('Invalid field sorting. If DEBUG were set to ' +
                     'False, an HTTP 404 page would have been shown instead.')
@@ -123,4 +129,3 @@ class SortedDataNode(template.Node):
 
 anchor = register.tag(anchor)
 autosort = register.tag(autosort)
-
